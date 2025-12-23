@@ -66,6 +66,13 @@ jobs:
           mkdir -p out
           printf "%s" "${{ secrets.ENV_FILE }}" > out/.env
 
+      # 1-2) runner에서 nginx가 쓸 static 모으기
+      - name: Collect static files
+        run: |
+          mkdir -p out/static
+          cp -r ticketing-core/src/main/resources/static/* out/static/ || true
+          cp -r staff-api/src/main/resources/static/* out/static/ || true
+
       # 2) 서버로 필요한 파일 복사
       - name: Copy files to server (scp)
         env:
