@@ -44,8 +44,15 @@
   const goBtn = document.getElementById("goBtn");
   const retryBtn = document.getElementById("retryBtn");
 
-  // ✅ 같은 오리진(8080) 기준으로 호출 (Nginx 통합 라우팅용)
-  const QUEUE_BASE = "http://localhost:8082"; // ex) "" => /api/queue/...
+  // 같은 오리진(8080) 기준으로 호출 (Nginx 통합 라우팅용)
+  // const QUEUE_BASE = "http://localhost:8082"; // ex) "" => /api/queue/...
+  // const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+  // 로컬: queue-service(8082) 직접 호출
+  // 배포: 같은 오리진(nginx가 /api/queue 를 queue-service로 프록시)
+  // const QUEUE_BASE = isLocal ? "http://localhost:8082" : "";
+  const QUEUE_BASE =
+      (location.hostname === "localhost") ? "http://localhost:8082" : "";
 
   let intervalId = null;
   let isAllowedNow = false;
@@ -82,7 +89,7 @@
     msgEl.textContent = "입장 가능합니다! 좌석 선택으로 이동하세요.";
     goBtn.disabled = false;
 
-    // ✅ (원하면 주석 처리) 허용되면 자동 이동
+    // 허용되면 자동 이동
     // window.location.href = "/seats.html";
   }
 
