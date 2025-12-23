@@ -25,7 +25,7 @@ public class QueueService {
   private static final Duration TOKEN_TTL = Duration.ofHours(2);
 
   private static final boolean DEFAULT_ENABLED = true;
-  private static final int DEFAULT_ALLOWED_COUNT = 20;
+  private static final int DEFAULT_ALLOWED_COUNT = 10;
   private static final int DEFAULT_AVG_SEC_PER_USER = 5;
 
   public EnterQueueResponse enter(String eventId) {
