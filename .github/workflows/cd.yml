@@ -85,7 +85,7 @@ jobs:
           sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USERNAME@$SSH_HOST" "mkdir -p ~/app"
           sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" out/.env "$SSH_USERNAME@$SSH_HOST:~/app/.env"
           sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" docker-compose.prod.yml "$SSH_USERNAME@$SSH_HOST:~/app/docker-compose.prod.yml"
-          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -r static "$SSH_USERNAME@$SSH_HOST:~/app/static"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -r out/static "$SSH_USERNAME@$SSH_HOST:~/app/static"
           sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" docker/nginx/conf.d/default.conf "$SSH_USERNAME@$SSH_HOST:~/app/default.conf"
 
       # 3) 서버에서 배포 실행
