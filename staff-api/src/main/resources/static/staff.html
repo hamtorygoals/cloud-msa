@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Staff - Lookup</title>
+  <link rel="stylesheet" href="/staff.css" />
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>보안요원 조회</h1>
+    <div class="muted">4자리 인증번호로 예약 좌석을 확인합니다</div>
+  </div>
+
+  <div class="card">
+    <label class="field">
+      <span>Event ID</span>
+      <input id="eventId" value="E1" />
+    </label>
+
+    <label class="field">
+      <span>인증번호 (4자리)</span>
+      <input id="code4" inputmode="numeric" maxlength="4" placeholder="예: 0421" />
+    </label>
+
+    <div class="actions">
+      <button id="lookupBtn" class="primary">조회</button>
+      <button id="clearBtn">초기화</button>
+    </div>
+
+    <div id="errorBox" class="error hidden"></div>
+  </div>
+
+  <div id="resultCard" class="card hidden">
+    <h2>조회 결과</h2>
+
+    <div class="kv">
+      <div class="k">Event</div>
+      <div class="v" id="rEvent"></div>
+
+      <div class="k">Seat</div>
+      <div class="v" id="rSeat"></div>
+
+      <div class="k">Code</div>
+      <div class="v mono" id="rCode"></div>
+
+      <div class="k">Reserved At</div>
+      <div class="v" id="rAt"></div>
+    </div>
+  </div>
+
+  <p class="muted small">
+    ※ 이 화면은 staff-api에서 제공됩니다.
+  </p>
+</div>
+
+<script src="/staff.js"></script>
+</body>
+</html>
