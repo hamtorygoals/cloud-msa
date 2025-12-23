@@ -1,0 +1,5 @@
+rootProject.name = 'cloud-msa'
+
+include 'ticketing-core'
+include 'staff-api'
+include 'queue-service'
