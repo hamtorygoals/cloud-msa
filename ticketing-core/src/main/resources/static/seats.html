@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ticketing - Seats</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+
+<!-- 예약 성공 모달 -->
+<div id="codeModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <h2>예약 성공 🎉</h2>
+    <p class="muted">보안요원에게 아래 인증번호(4자리)를 보여주세요. <br>* 해당 번호는 다시 볼 수 없으니, 꼭 캡처해서 저장해주세요!</p>
+    <div id="codeBig" class="codeBig">0000</div>
+    <div class="modal-actions">
+      <button id="doneBtn" class="primary">확인 완료</button>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="topbar">
+    <h1>좌석 선택</h1>
+    <div class="muted">Event: <span id="eventLabel"></span></div>
+  </div>
+
+  <div class="legend">
+    <span class="chip available">AVAILABLE</span>
+    <span class="chip held">HELD</span>
+    <span class="chip reserved">RESERVED</span>
+    <span class="chip selected">SELECTED</span>
+  </div>
+
+  <div id="grid" class="grid"></div>
+
+  <div class="panel">
+    <div>
+      선택 좌석: <b id="selectedSeat">(없음)</b>
+      <div class="muted" id="holdInfo"></div>
+    </div>
+    <div class="actions">
+      <button id="refreshBtn">새로고침</button>
+      <button id="confirmBtn" class="primary" disabled>예약 확정</button>
+    </div>
+  </div>
+
+  <p class="muted">
+    <a href="/index.html">← 입장 화면으로</a>
+  </p>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  const state = {
+    eventId: localStorage.getItem("eventId") || "E1",
+    selectedSeatId: null,
+    holdToken: null,
+    holdExpiresAt: null
+  };
+
+  document.getElementById("eventLabel").textContent = state.eventId;
+
+  const gridEl = document.getElementById("grid");
+  const selectedSeatEl = document.getElementById("selectedSeat");
+  const holdInfoEl = document.getElementById("holdInfo");
+  const confirmBtn = document.getElementById("confirmBtn");
+  const refreshBtn = document.getElementById("refreshBtn");
+
+  // 모달
+  const modalEl = document.getElementById("codeModal");
+  const codeBigEl = document.getElementById("codeBig");
+  const doneBtn = document.getElementById("doneBtn");
+
+  function openModal(code4) {
+    codeBigEl.textContent = code4;
+    modalEl.classList.remove("hidden");
+  }
+  function closeModal() {
+    modalEl.classList.add("hidden");
+  }
+
+  // 좌석 버튼을 seatId로 빠르게 찾기
+  function seatBtn(seatId) {
+    return gridEl.querySelector(`button[data-seat-id="${seatId}"]`);
+  }
+
+  // 선택은 항상 "1개만" 유지
+  function setSelected(seatId) {
+    // 이전 선택 해제(딱 1개만)
+    if (state.selectedSeatId && state.selectedSeatId !== seatId) {
+      const prev = seatBtn(state.selectedSeatId);
+      if (prev) prev.classList.remove("selected");
+    }
+
+    state.selectedSeatId = seatId;
+
+    if (seatId) {
+      const cur = seatBtn(seatId);
+      if (cur) cur.classList.add("selected");
+      selectedSeatEl.textContent = seatId;
+    } else {
+      selectedSeatEl.textContent = "(없음)";
+    }
+
+    confirmBtn.disabled = !(state.selectedSeatId && state.holdToken);
+  }
+
+  function setHoldInfo(text) {
+    holdInfoEl.textContent = text || "";
+  }
+
+  // 그리드 최초 렌더 (필요할 때만 전체 갱신)
+  async function renderFull() {
+    const scrollY = window.scrollY; // 스크롤 위치 저장(혹시나)
+    gridEl.innerHTML = "로딩중...";
+
+    const seats = await apiGet(`/api/seats?eventId=${encodeURIComponent(state.eventId)}`);
+
+    gridEl.innerHTML = "";
+    seats.forEach(s => {
+      const btn = document.createElement("button");
+      btn.dataset.seatId = s.seatId;
+      btn.className = `seat ${s.status.toLowerCase()}`;
+      btn.textContent = s.seatId;
+
+      if (state.selectedSeatId === s.seatId) btn.classList.add("selected");
+      btn.disabled = (s.status === "RESERVED");
+
+      btn.addEventListener("click", () => onSeatClick(s.seatId, s.status));
+      gridEl.appendChild(btn);
+    });
+
+    // 스크롤 복원(풀 렌더에서도 위로 튀는 느낌 최소화)
+    window.scrollTo({ top: scrollY });
+  }
+
+  // 특정 좌석 버튼의 상태 클래스만 업데이트 (스크롤 튐 방지 핵심)
+  function updateSeatStatus(seatId, newStatus) {
+    const btn = seatBtn(seatId);
+    if (!btn) return;
+
+    // 상태 클래스 제거 후 새로 적용
+    btn.classList.remove("available", "held", "reserved");
+    btn.classList.add(newStatus.toLowerCase());
+
+    // RESERVED면 비활성화
+    btn.disabled = (newStatus === "RESERVED");
+  }
+
+  async function onSeatClick(seatId, knownStatus) {
+    // 이미 선택된 좌석을 다시 클릭하면: "선택 해제"
+    if (state.selectedSeatId === seatId) {
+      // 홀드 토큰까지 같이 날려버리기(확정 불가)
+      state.holdToken = null;
+      state.holdExpiresAt = null;
+      setSelected(null);
+      setHoldInfo("");
+      confirmBtn.disabled = true;
+      return;
+    }
+
+    // 다른 좌석 클릭 = 이전 선택은 자동 해제됨
+    setSelected(seatId);
+    state.holdToken = null;
+    state.holdExpiresAt = null;
+    setHoldInfo("");
+    confirmBtn.disabled = true;
+
+    // 이미 RESERVED로 보이면 서버 호출 전에 차단(안전)
+    if (knownStatus === "RESERVED") return;
+
+    // 추가
+    const queueToken = localStorage.getItem("queueToken");
+    if (!queueToken) {
+      alert("대기열 토큰이 없습니다. 다시 입장해주세요.");
+      window.location.href = "/queue.html";
+      return;
+    }
+
+    try {
+      // body에 queueToken 추가
+      const res = await apiPost("/api/seats/hold", {
+        eventId: state.eventId,
+        seatId,
+        queueToken
+      });
+      // const res = await apiPost("/api/seats/hold", { eventId: state.eventId, seatId });
+
+      state.holdToken = res.holdToken;
+      state.holdExpiresAt = Date.now() + (res.expiresInSec * 1000);
+      setHoldInfo(`홀드 성공 (만료 ${res.expiresInSec}초)`);
+      confirmBtn.disabled = false;
+
+      // 전체 렌더 대신: 현재 좌석만 HELD로 표시
+      updateSeatStatus(seatId, "HELD");
+
+    } catch (e) {
+      // hold 실패면 선택/토큰 초기화 (중복 홀드 등)
+      alert(e.message || "홀드 실패");
+      state.holdToken = null;
+      state.holdExpiresAt = null;
+      confirmBtn.disabled = true;
+
+      // 실패했으면 선택도 풀어주는 게 UX가 깔끔
+      setSelected(null);
+      setHoldInfo("");
+
+      // 필요하면 한번만 전체 갱신(다른 사람이 먼저 잡았을 수 있으니)
+      // 스크롤 튐 최소화를 위해 full render는 마지막에
+      await renderFull();
+    }
+  }
+
+  confirmBtn.addEventListener("click", async () => {
+    if (!state.selectedSeatId || !state.holdToken) return;
+
+    const seatId = state.selectedSeatId;
+
+    // 추가
+    const queueToken = localStorage.getItem("queueToken");
+    if (!queueToken) {
+      alert("대기열 토큰이 없습니다. 다시 입장해주세요.");
+      window.location.href = "/queue.html";
+      return;
+    }
+
+    try {
+      // body에 queueToken 추가
+      const res = await apiPost("/api/reservations/confirm", {
+        eventId: state.eventId,
+        seatId,
+        holdToken: state.holdToken,
+        queueToken
+      });
+      // const res = await apiPost("/api/reservations/confirm", {
+      //   eventId: state.eventId,
+      //   seatId,
+      //   holdToken: state.holdToken
+      // });
+
+      openModal(res.code4);
+
+      // 확정 후 상태 업데이트
+      state.holdToken = null;
+      state.holdExpiresAt = null;
+      confirmBtn.disabled = true;
+
+      updateSeatStatus(seatId, "RESERVED");
+
+    } catch (e) {
+      alert(e.message || "예약 확정 실패");
+      // 실패했으면 상태 동기화 한 번
+      await renderFull();
+    }
+  });
+
+  doneBtn.addEventListener("click", async () => {
+    closeModal();
+
+    // 상태 초기화
+    state.selectedSeatId = null;
+    state.holdToken = null;
+    state.holdExpiresAt = null;
+
+    setSelected(null);
+    setHoldInfo("");
+
+    // 필요하면 한번만 전체 갱신(RESERVED 반영 보장)
+    await renderFull();
+  });
+
+  refreshBtn.addEventListener("click", renderFull);
+
+  // 최초 렌더
+  renderFull();
+</script>
+</body>
+</html>

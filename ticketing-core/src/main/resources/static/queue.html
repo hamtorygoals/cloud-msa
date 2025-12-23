@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ticketing - Queue</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>대기열</h1>
+    <div class="muted">입장 순서를 기다려주세요</div>
+  </div>
+
+  <div class="panel" style="flex-direction: column; align-items: flex-start;">
+    <div>Event: <b id="eventLabel"></b></div>
+
+    <div style="margin-top:10px;">
+      내 순번: <b id="pos">-</b> /
+      예상 대기시간: <b id="eta">-</b> 초
+    </div>
+
+    <div class="muted" style="margin-top:8px;" id="msg"></div>
+
+    <div class="actions" style="margin-top:12px;">
+      <button id="goBtn" class="primary" disabled>좌석 선택으로 이동</button>
+      <button id="retryBtn">다시 시도</button>
+    </div>
+  </div>
+
+  <p class="muted">
+    <a href="/index.html">← 입장 화면으로</a>
+  </p>
+</div>
+
+<script>
+  const eventId = localStorage.getItem("eventId") || "E1";
+  document.getElementById("eventLabel").textContent = eventId;
+
+  const posEl = document.getElementById("pos");
+  const etaEl = document.getElementById("eta");
+  const msgEl = document.getElementById("msg");
+  const goBtn = document.getElementById("goBtn");
+  const retryBtn = document.getElementById("retryBtn");
+
+  // ✅ 같은 오리진(8080) 기준으로 호출 (Nginx 통합 라우팅용)
+  const QUEUE_BASE = "http://localhost:8082"; // ex) "" => /api/queue/...
+
+  let intervalId = null;
+  let isAllowedNow = false;
+
+  async function qPost(path) {
+    const res = await fetch(`${QUEUE_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || "queue api error");
+    return JSON.parse(text);
+  }
+
+  async function qGet(path) {
+    const res = await fetch(`${QUEUE_BASE}${path}`);
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || "queue api error");
+    return JSON.parse(text);
+  }
+
+  async function enterQueue() {
+    msgEl.textContent = "대기열 입장중...";
+    const res = await qPost(`/api/queue/enter?eventId=${encodeURIComponent(eventId)}`);
+    localStorage.setItem("queueToken", res.queueToken);
+    return res.queueToken;
+  }
+
+  function setUIAllowed() {
+    isAllowedNow = true;
+    posEl.textContent = "0";
+    etaEl.textContent = "0";
+    msgEl.textContent = "입장 가능합니다! 좌석 선택으로 이동하세요.";
+    goBtn.disabled = false;
+
+    // ✅ (원하면 주석 처리) 허용되면 자동 이동
+    // window.location.href = "/seats.html";
+  }
+
+  function setUIWaiting(st) {
+    isAllowedNow = false;
+    posEl.textContent = String(st.position);
+    etaEl.textContent = String(st.estimatedWaitSec);
+    msgEl.textContent = "대기중... (5초마다 갱신)";
+    goBtn.disabled = true;
+  }
+
+  async function poll() {
+    const token = localStorage.getItem("queueToken");
+    if (!token) return;
+
+    const st = await qGet(
+        `/api/queue/status?eventId=${encodeURIComponent(eventId)}&token=${encodeURIComponent(token)}`
+    );
+
+    if (st.allowed) {
+      if (!isAllowedNow) setUIAllowed();
+
+      // ✅ 이미 allowed면 폴링 멈춰도 됨(불필요한 트래픽 제거)
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      return;
+    }
+
+    setUIWaiting(st);
+  }
+
+  goBtn.addEventListener("click", () => {
+    window.location.href = "/seats.html";
+  });
+
+  retryBtn.addEventListener("click", async () => {
+    // ✅ interval 중복 방지
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+    isAllowedNow = false;
+
+    localStorage.removeItem("queueToken");
+    posEl.textContent = "-";
+    etaEl.textContent = "-";
+    goBtn.disabled = true;
+
+    await boot();
+  });
+
+  async function boot() {
+    try {
+      // ✅ 이미 토큰이 있으면 enter를 다시 하지 않고 status만 폴링
+      let token = localStorage.getItem("queueToken");
+      if (!token) token = await enterQueue();
+      else msgEl.textContent = "기존 대기열 토큰으로 재접속...";
+
+      await poll();
+
+      // ✅ interval 중복 방지
+      if (intervalId) clearInterval(intervalId);
+      intervalId = setInterval(poll, 5000);
+
+    } catch (e) {
+      alert(e.message || "대기열 진입 실패");
+      msgEl.textContent = "대기열 진입 실패. 다시 시도해주세요.";
+    }
+  }
+
+  boot();
+</script>
+</body>
+</html>
