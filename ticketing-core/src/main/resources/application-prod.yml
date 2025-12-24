@@ -5,6 +5,10 @@ spring:
   application:
     name: ticketing-core
 
+  jpa:
+    hibernate:
+      ddl-auto: update
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USER}
