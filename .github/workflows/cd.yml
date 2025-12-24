@@ -20,7 +20,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # core
       - name: Build & Push (ticketing-core)
         uses: docker/build-push-action@v6
         with:
@@ -30,7 +29,6 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO_CORE }}:latest
 
-      # queue
       - name: Build & Push (queue-service)
         uses: docker/build-push-action@v6
         with:
@@ -40,7 +38,6 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO_QUEUE }}:latest
 
-      # staff
       - name: Build & Push (staff-api)
         uses: docker/build-push-action@v6
         with:
@@ -60,42 +57,17 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
-      # 1) runner에서 .env 생성(멀티라인 안전)
       - name: Make .env from ENV_FILE secret
         run: |
           mkdir -p out
           printf "%s" "${{ secrets.ENV_FILE }}" > out/.env
 
-      # 2) runner에서 nginx가 쓸 static 모으기
       - name: Collect static files
         run: |
           mkdir -p out/static
-          cp -r ticketing-core/src/main/resources/static/* out/static/ 2>/dev/null || true
-          cp -r staff-api/src/main/resources/static/* out/static/ 2>/dev/null || true
-          echo "[debug] out/static:"
-          ls -al out/static || true
+          cp -r ticketing-core/src/main/resources/static/* out/static/ || true
+          cp -r staff-api/src/main/resources/static/* out/static/ || true
 
-      # 3) nginx conf를 레포에서 찾아 out/default.conf로 준비
-      - name: Collect nginx conf
-        run: |
-          set -e
-          mkdir -p out
-
-          CONF_PATH="$(ls docker/nginx/conf.d/*.conf 2>/dev/null | head -n 1 || true)"
-          if [ -z "$CONF_PATH" ]; then
-            CONF_PATH="$(ls nginx/conf.d/*.conf 2>/dev/null | head -n 1 || true)"
-          fi
-
-          if [ -z "$CONF_PATH" ]; then
-            echo "❌ nginx conf 파일을 찾지 못했습니다. (docker/nginx/conf.d/*.conf 또는 nginx/conf.d/*.conf)"
-            exit 1
-          fi
-
-          echo "[debug] using nginx conf: $CONF_PATH"
-          cp "$CONF_PATH" out/default.conf
-          ls -al out/default.conf
-
-      # 4) 서버로 필요한 파일 복사
       - name: Copy files to server (scp)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -104,30 +76,18 @@ jobs:
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
           set -e
-
-          # 서버 디렉토리 준비 (이거 때문에 서버에서 따로 만들 필요 없음)
           sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" \
-            "$SSH_USERNAME@$SSH_HOST" \
-            "mkdir -p ~/app/docker/nginx/conf.d ~/app/static"
-
-          # 파일 전송 (✅ out/static을 보냄)
-          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" \
-            out/.env \
-            "$SSH_USERNAME@$SSH_HOST:~/app/.env"
+            "$SSH_USERNAME@$SSH_HOST" "mkdir -p ~/app"
 
           sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" \
-            docker-compose.prod.yml \
-            "$SSH_USERNAME@$SSH_HOST:~/app/docker-compose.prod.yml"
-
-          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -r \
-            out/static/* \
-            "$SSH_USERNAME@$SSH_HOST:~/app/static/"
+            out/.env "$SSH_USERNAME@$SSH_HOST:~/app/.env"
 
           sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" \
-            out/default.conf \
-            "$SSH_USERNAME@$SSH_HOST:~/app/docker/nginx/conf.d/default.conf"
+            docker-compose.prod.yml "$SSH_USERNAME@$SSH_HOST:~/app/docker-compose.prod.yml"
 
-      # 5) 서버에서 배포 실행
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" \
+            -r out/static "$SSH_USERNAME@$SSH_HOST:~/app/static"
+
       - name: Deploy on server
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -138,16 +98,16 @@ jobs:
           set -e
           sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" \
             "$SSH_USERNAME@$SSH_HOST" <<'EOF'
-              set -e
-              cd ~/app
+            set -e
+            cd ~/app
 
-              echo "🐳 pull & up"
-              docker compose -f docker-compose.prod.yml down
-              docker compose -f docker-compose.prod.yml pull
-              docker compose -f docker-compose.prod.yml up -d
+            echo "🐳 pull & up"
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
 
-              echo "🧼 prune"
-              docker image prune -f
+            echo "🧼 prune"
+            docker image prune -f
 
-              echo "✅ done"
+            echo "✅ done"
           EOF
