@@ -23,6 +23,7 @@ public class QueueService {
   private final StringRedisTemplate redis;
 
   private static final Duration TOKEN_TTL = Duration.ofHours(2);
+  private static final Duration ALLOWED_TTL = Duration.ofSeconds(40);
 
   private static final boolean DEFAULT_ENABLED = true;
   private static final int DEFAULT_ALLOWED_COUNT = 10;
@@ -94,13 +95,21 @@ public class QueueService {
         st.eventId(), st.queueToken(), st.position(), st.estimatedWaitSec(), st.allowed());
   }
 
+  //  private void addAllowed(String eventId, String token) {
+  //    redis.opsForSet().add(allowedKey(eventId), token);
+  //  }
+
   private void addAllowed(String eventId, String token) {
-    redis.opsForSet().add(allowedKey(eventId), token);
+    redis.opsForValue().set(allowedKey(eventId, token), "1", ALLOWED_TTL);
   }
 
+  //  private boolean isAllowed(String eventId, String token) {
+  //    Boolean ok = redis.opsForSet().isMember(allowedKey(eventId), token);
+  //    return Boolean.TRUE.equals(ok);
+  //  }
+
   private boolean isAllowed(String eventId, String token) {
-    Boolean ok = redis.opsForSet().isMember(allowedKey(eventId), token);
-    return Boolean.TRUE.equals(ok);
+    return Boolean.TRUE.equals(redis.hasKey(allowedKey(eventId, token)));
   }
 
   private String issueToken() {
@@ -130,8 +139,11 @@ public class QueueService {
     return "queue:%s".formatted(eventId);
   }
 
-  private String allowedKey(String eventId) {
-    return "queue:allowed:%s".formatted(eventId);
+  //  private String allowedKey(String eventId) {
+  //    return "queue:allowed:%s".formatted(eventId);
+  //  }
+  private String allowedKey(String eventId, String token) {
+    return "queue:allowed:%s:%s".formatted(eventId, token);
   }
 
   private String tokenKey(String token) {
