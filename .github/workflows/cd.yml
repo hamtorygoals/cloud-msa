@@ -76,17 +76,11 @@ jobs:
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
           set -e
-          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" \
-            "$SSH_USERNAME@$SSH_HOST" "mkdir -p ~/app"
-
-          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" \
-            out/.env "$SSH_USERNAME@$SSH_HOST:~/app/.env"
-
-          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" \
-            docker-compose.prod.yml "$SSH_USERNAME@$SSH_HOST:~/app/docker-compose.prod.yml"
-
-          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" \
-            -r out/static "$SSH_USERNAME@$SSH_HOST:~/app/static"
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USERNAME@$SSH_HOST" "mkdir -p ~/app"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" out/.env "$SSH_USERNAME@$SSH_HOST:~/app/.env"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" docker-compose.prod.yml "$SSH_USERNAME@$SSH_HOST:~/app/docker-compose.prod.yml"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -r out/static "$SSH_USERNAME@$SSH_HOST:~/app/static"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" docker/nginx/conf.d/default.conf "$SSH_USERNAME@$SSH_HOST:~/app/default.conf"
 
       - name: Deploy on server
         env:
@@ -96,10 +90,13 @@ jobs:
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
           set -e
-          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" \
-            "$SSH_USERNAME@$SSH_HOST" <<'EOF'
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USERNAME@$SSH_HOST" <<'EOF'
             set -e
             cd ~/app
+
+            echo "🧩 move nginx conf (if needed)"
+            mkdir -p docker/nginx/conf.d
+            mv -f default.conf docker/nginx/conf.d/default.conf
 
             echo "🐳 pull & up"
             docker compose -f docker-compose.prod.yml down
