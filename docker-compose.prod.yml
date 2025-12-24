@@ -9,12 +9,9 @@ services:
       - ./static:/usr/share/nginx/html:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
-      ticketing-core:
-        condition: service_healthy
-      queue-service:
-        condition: service_healthy
-      staff-api:
-        condition: service_healthy
+      - ticketing-core
+      - queue-service
+      - staff-api
 
   ticketing-core:
     image: ${DOCKER_USERNAME}/${DOCKER_REPO_CORE}:latest
@@ -30,12 +27,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 30s
 
   queue-service:
     image: ${DOCKER_USERNAME}/${DOCKER_REPO_QUEUE}:latest
@@ -46,23 +37,14 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/8082"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 20s
 
   staff-api:
     image: ${DOCKER_USERNAME}/${DOCKER_REPO_STAFF}:latest
     environment:
       - SPRING_PROFILES_ACTIVE=prod
-    healthcheck:
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/8081"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 20s
+    depends_on:
+      ticketing-core:
+        condition: service_started   # 또는 아예 depends_on 삭제해도 됨
 
   postgres:
     image: postgres:16
